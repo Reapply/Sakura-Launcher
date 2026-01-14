@@ -1,8 +1,8 @@
 package me.inspect.auth
 
 object AuthConstants {
-    // waiting on mojang to accept ts (annoying)
-    const val CLIENT_ID = ""
+    // waiting on mojang to accept ts (using moulberrys for now) TODO: Change later
+    const val CLIENT_ID = "e5226706-5096-431d-9516-ae48fe263401"
     const val REDIRECT_URI = "http://localhost:3160/auth"
     const val MSA_SCOPES = "XboxLive.signin XboxLive.offline_access"
 

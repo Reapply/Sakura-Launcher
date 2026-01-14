@@ -11,3 +11,6 @@
 /.gradle/
 /.mvn/
 /*.log
+.git-broken/
+.git-active/
+frontend/build/
