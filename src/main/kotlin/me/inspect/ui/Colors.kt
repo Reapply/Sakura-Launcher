@@ -2,7 +2,7 @@ package me.inspect.ui
 
 import androidx.compose.ui.graphics.Color
 
-object SakuraColors {
+object Colors {
 
     val Background = Color(0xFF0B0B10)
     val SurfaceDark = Color(0xFF0F172A)

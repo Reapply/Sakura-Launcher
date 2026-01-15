@@ -117,7 +117,7 @@ fun WindowScope.LauncherApp(
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(16.dp),
-            color = SakuraColors.Background
+            color = Colors.Background
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 TitleBar(onClose = onClose, onMinimize = onMinimize)
@@ -153,7 +153,7 @@ fun WindowScope.TitleBar(
         ) {
             Text(
                 "Sakura Launcher",
-                color = SakuraColors.TextSecondary,
+                color = Colors.TextSecondary,
                 fontSize = 14.sp,
                 fontFamily = GoogleSans,
                 fontWeight = FontWeight.Medium
@@ -196,7 +196,7 @@ fun LoginView(viewModel: LauncherViewModel) {
     ) {
         Text(
             "Sakura Launcher",
-            color = SakuraColors.TextPrimary,
+            color = Colors.TextPrimary,
             fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = GoogleSans
@@ -207,8 +207,8 @@ fun LoginView(viewModel: LauncherViewModel) {
             enabled = !viewModel.isLoggingIn,
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = SakuraColors.Accent,
-                contentColor = SakuraColors.TextPrimary
+                containerColor = Colors.Accent,
+                contentColor = Colors.TextPrimary
             ),
             modifier = Modifier.height(48.dp).width(200.dp)
         ) {
@@ -223,7 +223,7 @@ fun LoginView(viewModel: LauncherViewModel) {
         viewModel.error?.let { errorMessage ->
             Text(
                 errorMessage,
-                color = SakuraColors.Accent,
+                color = Colors.Accent,
                 fontSize = 14.sp,
                 fontFamily = GoogleSans
             )
@@ -259,7 +259,7 @@ fun LoggedInView(profile: MinecraftProfile) {
                 modifier = Modifier.size(128.dp),
                 shape = RoundedCornerShape(16.dp),
                 shadowElevation = 24.dp,
-                color = SakuraColors.SurfaceDark
+                color = Colors.SurfaceDark
             ) {
                 Image(
                     bitmap = bitmap,
@@ -275,12 +275,12 @@ fun LoggedInView(profile: MinecraftProfile) {
                 .clip(RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = SakuraColors.Accent)
+            CircularProgressIndicator(color = Colors.Accent)
         }
 
         Text(
             profile.name,
-            color = SakuraColors.TextPrimary,
+            color = Colors.TextPrimary,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = GoogleSans
