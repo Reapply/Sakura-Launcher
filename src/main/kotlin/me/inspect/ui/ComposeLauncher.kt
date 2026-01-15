@@ -1,7 +1,12 @@
 package me.inspect.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,10 +16,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,21 +35,30 @@ import java.net.URI
 import java.net.URL
 import javax.imageio.ImageIO
 
+/**
+ * ViewModel responsible for authentication flow and launcher state.
+ */
 class LauncherViewModel(
     private val authenticator: Authenticator = Authenticator(),
     private val redirectServerProvider: () -> LocalRedirectServer = { LocalRedirectServer() }
 ) {
     var isLoggingIn by mutableStateOf(false)
         private set
+
     var profile by mutableStateOf<MinecraftProfile?>(null)
         private set
+
     var error by mutableStateOf<String?>(null)
         private set
 
     private val scope = kotlinx.coroutines.CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    val isLoggedIn: Boolean get() = profile != null
+    val isLoggedIn: Boolean
+        get() = profile != null
 
+    /**
+     * Starts the Microsoft → Xbox → Minecraft authentication flow.
+     */
     fun login() {
         if (isLoggingIn) return
         isLoggingIn = true
@@ -57,6 +69,7 @@ class LauncherViewModel(
                 val pending = withContext(Dispatchers.IO) {
                     authenticator.createAuthorization()
                 }
+
                 openBrowser(pending.authorizationUrl)
 
                 val redirectResult = withContext(Dispatchers.IO) {
@@ -64,14 +77,17 @@ class LauncherViewModel(
                 }
 
                 if (!redirectResult.error.isNullOrBlank()) {
-                    throw IllegalStateException("Authorization error: ${redirectResult.error}")
+                    error = redirectResult.error
+                    return@launch
                 }
 
-                val code = redirectResult.code ?: error("Missing authorization code")
-                val state = redirectResult.state ?: error("Missing state")
-
                 val msaTokens = withContext(Dispatchers.IO) {
-                    authenticator.finishAuthorization(code, state, pending.state, pending.codeVerifier)
+                    authenticator.finishAuthorization(
+                        redirectResult.code!!,
+                        redirectResult.state!!,
+                        pending.state,
+                        pending.codeVerifier
+                    )
                 }
 
                 val xblToken = withContext(Dispatchers.IO) {
@@ -97,6 +113,9 @@ class LauncherViewModel(
         }
     }
 
+    /**
+     * Opens the system browser to the given URL.
+     */
     private fun openBrowser(url: String) {
         if (Desktop.isDesktopSupported()) {
             Desktop.getDesktop().browse(URI(url))
@@ -104,9 +123,68 @@ class LauncherViewModel(
     }
 }
 
+/**
+ * Remembers a single instance of [LauncherViewModel].
+ */
 @Composable
-fun rememberLauncherViewModel() = remember { LauncherViewModel() }
+fun rememberLauncherViewModel(): LauncherViewModel =
+    remember { LauncherViewModel() }
 
+/**
+ * Loads an image from the application resources and caches it as [ImageBitmap].
+ */
+@Composable
+fun rememberResourceImage(path: String): ImageBitmap? =
+    remember(path) {
+        runCatching {
+            ImageIO.read(
+                object {}.javaClass.getResourceAsStream(path)
+            )?.toComposeImageBitmap()
+        }.getOrNull()
+    }
+
+/**
+ * Draws a full-size background image with a bottom-to-top fade overlay.
+ */
+@Composable
+fun BackgroundWithFade(
+    modifier: Modifier = Modifier,
+    imagePath: String,
+    fadeColor: Color
+) {
+    val image = rememberResourceImage(imagePath)
+
+    Box(modifier) {
+        image?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            fadeColor,
+                            fadeColor.copy(alpha = 0.85f),
+                            Color.Transparent
+                        ),
+                        startY = Float.POSITIVE_INFINITY,
+                        endY = 0f
+                    )
+                )
+        )
+    }
+}
+
+/**
+ * Root launcher UI rendered inside the window.
+ */
 @Composable
 fun WindowScope.LauncherApp(
     viewModel: LauncherViewModel = rememberLauncherViewModel(),
@@ -119,21 +197,59 @@ fun WindowScope.LauncherApp(
             shape = RoundedCornerShape(16.dp),
             color = Colors.Background
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                TitleBar(onClose = onClose, onMinimize = onMinimize)
-
-                Box(
+            Box(Modifier.fillMaxSize()) {
+                BackgroundWithFade(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (viewModel.isLoggedIn) {
-                        LoggedInView(viewModel.profile!!)
-                    } else {
-                        LoginView(viewModel)
+                    imagePath = "/images/background.png",
+                    fadeColor = Colors.Background
+                )
+
+                Column(Modifier.fillMaxSize()) {
+                    TitleBar(onClose, onMinimize)
+
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (viewModel.isLoggedIn) {
+                            LoggedInView(viewModel.profile!!)
+                        } else {
+                            LoginView(viewModel)
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WindowControlButton(
+    baseColor: Color,
+    hoverColor: Color,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+
+    val color by animateColorAsState(
+        targetValue = if (hovered) hoverColor else baseColor,
+        animationSpec = tween(120),
+        label = "window-button-hover"
+    )
+
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(32.dp)
+            .hoverable(interactionSource)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
     }
 }
 
@@ -146,8 +262,10 @@ fun WindowScope.TitleBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .padding(horizontal = 16.dp),
+                .height(40.dp)
+                .background(Colors.Background)
+                .padding(horizontal = 16.dp)
+                .shadow(elevation = 8.dp, shape = RoundedCornerShape(8.dp)),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -160,34 +278,25 @@ fun WindowScope.TitleBar(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(
-                    onClick = onMinimize,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFFBD2E))
-                    )
-                }
+                WindowControlButton(
+                    baseColor = Color(0xFFFFBD2E),
+                    hoverColor = Color(0xFFE0A800), // darker yellow
+                    onClick = onMinimize
+                )
 
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFF5F57))
-                    )
-                }
+                WindowControlButton(
+                    baseColor = Color(0xFFFF5F57),
+                    hoverColor = Color(0xFFE04842), // darker red
+                    onClick = onClose
+                )
             }
         }
     }
 }
 
+/**
+ * Login screen shown when the user is not authenticated.
+ */
 @Composable
 fun LoginView(viewModel: LauncherViewModel) {
     Column(
@@ -210,7 +319,9 @@ fun LoginView(viewModel: LauncherViewModel) {
                 containerColor = Colors.Accent,
                 contentColor = Colors.TextPrimary
             ),
-            modifier = Modifier.height(48.dp).width(200.dp)
+            modifier = Modifier
+                .width(200.dp)
+                .height(48.dp)
         ) {
             Text(
                 if (viewModel.isLoggingIn) "Logging in..." else "LOGIN",
@@ -220,9 +331,9 @@ fun LoginView(viewModel: LauncherViewModel) {
             )
         }
 
-        viewModel.error?.let { errorMessage ->
+        viewModel.error?.let {
             Text(
-                errorMessage,
+                it,
                 color = Colors.Accent,
                 fontSize = 14.sp,
                 fontFamily = GoogleSans
@@ -231,6 +342,9 @@ fun LoginView(viewModel: LauncherViewModel) {
     }
 }
 
+/**
+ * Profile view shown after successful login.
+ */
 @Composable
 fun LoggedInView(profile: MinecraftProfile) {
     val playerHead by produceState<ImageBitmap?>(null, profile.id) {
@@ -238,13 +352,8 @@ fun LoggedInView(profile: MinecraftProfile) {
             try {
                 val uuid = profile.id.replace("-", "")
                 val url = URL("https://mc-heads.net/avatar/$uuid/128")
-                val connection = url.openConnection().apply {
-                    setRequestProperty("User-Agent", "SakuraLauncher/1.0")
-                }
-                val image = ImageIO.read(connection.getInputStream())
-                image?.toComposeImageBitmap()
-            } catch (e: Exception) {
-                e.printStackTrace()
+                ImageIO.read(url)?.toComposeImageBitmap()
+            } catch (_: Exception) {
                 null
             }
         }
@@ -254,7 +363,7 @@ fun LoggedInView(profile: MinecraftProfile) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        playerHead?.let { bitmap ->
+        playerHead?.let {
             Surface(
                 modifier = Modifier.size(128.dp),
                 shape = RoundedCornerShape(16.dp),
@@ -262,21 +371,12 @@ fun LoggedInView(profile: MinecraftProfile) {
                 color = Colors.SurfaceDark
             ) {
                 Image(
-                    bitmap = bitmap,
-                    contentDescription = "Player Head",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                    filterQuality = FilterQuality.None
+                    bitmap = it,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit
                 )
             }
-        } ?: Box(
-            modifier = Modifier
-                .size(128.dp)
-                .clip(RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = Colors.Accent)
-        }
+        } ?: CircularProgressIndicator(color = Colors.Accent)
 
         Text(
             profile.name,
